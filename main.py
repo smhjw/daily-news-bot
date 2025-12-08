@@ -1,76 +1,119 @@
 import os
 import smtplib
 import requests
+import google.generativeai as genai
 from email.mime.text import MIMEText
 from email.header import Header
 from datetime import datetime
 
-# --- 配置区域 (从GitHub Secrets读取) ---
-API_KEY = os.environ["NEWS_API_KEY"]
+# --- 配置区域 ---
+NEWS_API_KEY = os.environ["NEWS_API_KEY"]
 EMAIL_USER = os.environ["EMAIL_USER"]
 EMAIL_PASS = os.environ["EMAIL_PASSWORD"]
-TARGET_EMAIL = EMAIL_USER  # 默认发给自己
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") # 获取 AI Key
+
+TARGET_EMAIL = EMAIL_USER
+
+# 配置 Gemini
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    # 使用 flash 模型，速度快且免费额度高
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
 def get_news():
-    # 获取全球(美国)头条，你也可以把 'us' 改成 'cn' (但中文源较少)
-    url = f"https://newsapi.org/v2/top-headlines?country=us&category=general&pageSize=10&apiKey={API_KEY}"
-    response = requests.get(url)
-    data = response.json()
-    return data.get("articles", [])
+    # 获取全球科技/商业新闻 (你可以改 category=general)
+    url = f"https://newsapi.org/v2/top-headlines?country=us&category=general&pageSize=7&apiKey={NEWS_API_KEY}"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        return data.get("articles", [])
+    except Exception as e:
+        print(f"获取新闻失败: {e}")
+        return []
+
+def ai_summarize(title, description):
+    """调用 Gemini 进行翻译和总结"""
+    if not GEMINI_API_KEY:
+        return description # 如果没配置 Key，就返回原版
+
+    try:
+        # 给 AI 的指令 (Vibe Prompt)
+        prompt = f"""
+        请扮演一位专业的中文新闻编辑。
+        任务：将以下这则英文新闻的标题和简介，翻译并总结成一段简练的中文摘要（100字以内）。
+        要求：不要直译，要概括发生了什么核心事件，让读者不用点链接也能看懂。
+        
+        英文标题: {title}
+        英文简介: {description}
+        
+        中文摘要：
+        """
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        print(f"AI 总结失败: {e}")
+        return description # 失败回退
 
 def send_email(articles):
     if not articles:
-        print("没有获取到新闻！")
+        print("没有新闻可发")
         return
 
-    # 获取当前日期
     today = datetime.now().strftime("%Y-%m-%d %A")
-    
-    # --- 生成 HTML 邮件内容 (Vibe: 纽约时报风格) ---
+    print(f"正在处理 {len(articles)} 条新闻，AI 正在阅读中... (这可能需要几十秒)")
+
+    # --- 邮件头部 ---
     html_content = f"""
     <html>
-    <body style="font-family: 'Georgia', serif; background-color: #f4f4f4; padding: 20px;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-            <h1 style="color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; font-size: 24px;">
-                🌍 Daily Briefing
-            </h1>
-            <p style="color: #666; font-style: italic;">{today}</p>
-            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+    <body style="font-family: 'Helvetica Neue', Helvetica, 'Microsoft YaHei', sans-serif; background-color: #f4f4f4; padding: 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+            <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 25px;">
+                <h1 style="color: #000; font-size: 26px; margin: 0;">🌍 全球早报 (AI 版)</h1>
+                <p style="color: #666; font-size: 14px; margin-top: 5px;">{today} | Gemini 整理</p>
+            </div>
     """
 
+    # --- 循环处理每条新闻 ---
     for article in articles:
-        title = article.get('title', 'No Title')
-        desc = article.get('description') or 'Click to read more...'
+        title_en = article.get('title', '无标题')
+        desc_en = article.get('description', '')
         url = article.get('url')
         source = article.get('source', {}).get('name', 'Unknown')
-        
-        # 过滤掉无效新闻
-        if title == "[Removed]": continue
+
+        if title_en == "[Removed]": continue
+
+        # === 关键步骤：召唤 AI ===
+        # 传入标题和简介，获取中文总结
+        summary_cn = ai_summarize(title_en, desc_en)
 
         html_content += f"""
-            <div style="margin-bottom: 25px;">
-                <h3 style="margin: 0 0 5px 0; font-size: 18px;">
-                    <a href="{url}" style="color: #2c3e50; text-decoration: none;">{title}</a>
+            <div style="margin-bottom: 30px; padding: 15px; background-color: #f9f9f9; border-radius: 8px; border-left: 4px solid #007bff;">
+                <h3 style="margin: 0 0 10px 0; font-size: 18px; line-height: 1.4;">
+                    <a href="{url}" style="color: #2c3e50; text-decoration: none;">{title_en}</a>
                 </h3>
-                <span style="background-color: #eee; color: #555; padding: 2px 6px; font-size: 12px; border-radius: 4px;">{source}</span>
-                <p style="color: #555; line-height: 1.6; font-size: 14px; margin-top: 8px;">{desc}</p>
+                <div style="font-size: 12px; color: #888; margin-bottom: 8px;">
+                    来源: {source}
+                </div>
+                <p style="color: #333; font-size: 15px; line-height: 1.6; margin: 0;">
+                    <strong>💡 AI 划重点：</strong> {summary_cn}
+                </p>
             </div>
         """
 
     html_content += """
-            <div style="margin-top: 30px; text-align: center; color: #999; font-size: 12px;">
-                Powered by Vibe Coding | NewsAPI
+            <div style="margin-top: 30px; text-align: center; color: #aaa; font-size: 12px;">
+                Generated by GitHub Actions & Google Gemini
             </div>
         </div>
     </body>
     </html>
     """
 
-    # --- 发送邮件逻辑 ---
+    # --- 发送逻辑 ---
     msg = MIMEText(html_content, 'html', 'utf-8')
-    msg['From'] = Header("Daily News Bot", 'utf-8')
+    msg['From'] = Header("AI News Bot", 'utf-8')
     msg['To'] = TARGET_EMAIL
-    msg['Subject'] = Header(f"早安新闻: {today}", 'utf-8')
+    msg['Subject'] = Header(f"早安！今日全球要闻 ({today})", 'utf-8')
 
     try:
         server = smtplib.SMTP_SSL("smtp.gmail.com", 465)

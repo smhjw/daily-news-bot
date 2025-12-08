@@ -1,0 +1,30 @@
+name: Daily News
+
+on:
+  schedule:
+    # 每天北京时间早晨 9:00 运行
+    # GitHub使用UTC时间，北京是UTC+8，所以这里设为 1:00 UTC
+    - cron: '0 1 * * *'
+  workflow_dispatch: # 允许你手动点击按钮测试
+
+jobs:
+  send_news:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install libraries
+        run: pip install requests
+
+      - name: Run script
+        env:
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        run: python main.py

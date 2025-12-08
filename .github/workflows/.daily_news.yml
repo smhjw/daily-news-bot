@@ -19,7 +19,7 @@ jobs:
 
       - name: Install libraries
         # 这里新增了 google-generativeai
-        run: pip install requests google-generativeai
+        run: pip install -U requests google-generativeai
 
       - name: Run script
         env:

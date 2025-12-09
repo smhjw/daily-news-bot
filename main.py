@@ -17,8 +17,8 @@ TARGET_EMAIL = EMAIL_USER
 # 配置 Gemini
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    # 使用 flash 模型，速度快且免费额度高
-    model = genai.GenerativeModel('gemini-pro')
+    # 使用最新的 Flash 模型，它在 Python 3.11 环境下最稳定
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
 def get_news():
     # 获取全球科技/商业新闻 (你可以改 category=general)

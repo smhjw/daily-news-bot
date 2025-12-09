@@ -2,7 +2,7 @@ name: Daily News
 
 on:
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '0 1 * * *' # 北京时间 09:00
   workflow_dispatch:
 
 jobs:
@@ -15,10 +15,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'  # <--- 升级到 3.11，更稳定
+          python-version: '3.11' # 👈 关键：必须是 3.11
 
       - name: Install libraries
-        run: pip install -U requests google-generativeai # <--- 强制更新到最新版
+        # 👈 关键：强制更新 google-generativeai 到最新版
+        run: pip install -U requests google-generativeai
 
       - name: Run script
         env:
